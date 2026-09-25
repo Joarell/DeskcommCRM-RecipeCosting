@@ -1,540 +1,266 @@
-<div align="center">
+# Ateliê ERP + DeskcommCRM
 
-🇧🇷 Português · [🇺🇸 English](README.en.md) · [🇪🇸 Español](README.es.md)
+Astro + TypeScript, rodando como **Cloudflare Worker** (adapter `@astrojs/cloudflare`),
+com todos os dados persistidos em **Cloudflare D1**. Segue SOLID e nenhuma
+função/método passa de 25 linhas. O front-end é **framework-free**: as views são
+DOM imperativo + CSS puro (sem React, Radix ou shadcn); o Tailwind v4 entra só
+como compilador de CSS.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/deskcomm-logo-dark.svg">
-  <img src="docs/brand/deskcomm-logo.svg" alt="Deskcomm CRM" width="420">
-</picture>
+O app é a fusão de dois produtos em um só shell:
 
-# 🛠️ DeskcommCRM — o Sistema Operacional de Vendas com IA, open source, pro WhatsApp
+- **CRM** (portado do DeskcommCRM) — painel, contatos, inbox, funil, atividades,
+  tarefas, agenda, catálogo, respostas rápidas, etiquetas e equipe. É a
+  navegação padrão.
+- **Ateliê ERP** — o ERP original de tortas, agora acessível pelo submenu
+  **Ateliê** (`/atelie/*`).
 
-**Agentes de IA que atendem, qualificam e vendem no WhatsApp — dentro de um CRM open source rodando no seu servidor.**
-**Sem mensalidade, sem feature travada, seus dados com você. A alternativa aberta a Kommo, Octadesk e Intercom.**
+## Por que mudou
 
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%2BAuth%2BStorage-3ecf8e?logo=supabase)](https://supabase.com)
-[![Self-hosted](https://img.shields.io/badge/self--hosted-1%20comando-orange)](hostgator-setup-kit/)
-[![CI](https://github.com/melgarafael/DeskcommCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/melgarafael/DeskcommCRM/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+Antes disso o app era 100% estático com `localStorage` (por navegador). Agora:
 
-[**⚡ Instalar**](#-instalar-na-sua-vps-o-caminho-principal) · [**🔄 Atualizar**](#-atualizar) · [**🧭 Visão**](VISION.md) · [**🏗️ Arquitetura**](ARCHITECTURE.md) · [**🤝 Contribuir**](CONTRIBUTING.md) · [**🗺️ Roadmap**](#%EF%B8%8F-roadmap)
+- `output: 'server'` + adapter Cloudflare → `src/pages/api/**` viram **rotas de
+  Worker de verdade**, executando no edge.
+- Toda leitura/escrita do front-end passa por `fetch('/api/...')` e cai no D1.
+- O CRM trouxe autenticação por sessão em D1 (sem OAuth, sem multi-tenant, sem
+  Supabase) e reutiliza a mesma infraestrutura de tabelas/rotas do ERP.
 
-</div>
+## Rotas
 
----
+| Área | Rotas |
+| --- | --- |
+| CRM | `/` (painel), `/contatos`, `/inbox`, `/funil`, `/atividades`, `/tarefas`, `/agenda`, `/catalogo`, `/respostas`, `/etiquetas`, `/equipe` |
+| Ateliê | `/atelie/painel`, `/atelie/ingredientes`, `/atelie/componentes`, `/atelie/produtos`, `/atelie/estoque`, `/atelie/pedidos`, `/atelie/clientes`, `/atelie/configuracoes` |
 
-> ### ☁️ Rode este CRM em produção com 1 comando
->
-> O DeskcommCRM foi desenvolvido em **parceria com a HostGator**: o [`hostgator-setup-kit/`](hostgator-setup-kit/)
-> instala o CRM completo (app + WhatsApp + banco) numa VPS com um único comando, e o
-> [runbook de produção](docs/runbooks/waha-hostgator.md) já assume esse ambiente.
->
-> **[👉 Assinar a VPS HostGator com desconto da parceria](https://www.hostgator.com.br/52708-141-3-52.html)** —
-> datacenter em São Paulo, ideal pro WhatsApp rodando 24/7. *(link de parceiro — assinar por ele apoia o projeto e sai mais barato)*
->
-> **Ainda não tem servidor?** Rode isto **no seu computador** (macOS, Linux ou WSL). Ele diz
-> qual plano contratar — com os números do runbook, não um "depende" — e te devolve o
-> comando certo pro seu caso:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/hostgator-setup-kit/comecar.sh | bash
-> ```
->
-> *(prefere ler antes de executar? clone o repo e rode `bash hostgator-setup-kit/comecar.sh` —
-> ele não instala nada sem você confirmar.)*
+Rotas antigas sem prefixo (`/dashboard`, `/ingredientes`, …) são redirecionadas
+para o equivalente em `/atelie/*` via `LEGACY_TO_ATELIE` (`src/ui/main.ts`).
 
----
+## Autenticação
 
-## ⚡ Instalar na sua VPS (o caminho principal)
+Login local simples (sem Google/OAuth). A sessão é uma linha na tabela
+`sessions` do D1, com token Bearer guardado no `localStorage` do navegador.
 
-### 1. Entre na sua VPS
+- `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- Usuários: `GET/POST /api/users`, `PUT/DELETE /api/users/:id`
+- Senhas: PBKDF2-SHA256, 100k iterações, salt `deskcomm-seed-v1`
+  (`src/server/auth.ts`), o mesmo esquema do seed.
 
-Abra o **Terminal** no seu computador (no Windows, o **PowerShell**; no Mac ou Linux, o
-**Terminal**) e conecte com o IP e a porta que a hospedagem te mandou por e-mail:
+## Passo a passo para rodar
 
 ```bash
-ssh -p PORTA root@SEU_IP
+bun install
+
+# 1. Crie o banco D1 (uma vez só)
+npx wrangler d1 create atelie_erp_db
+# copie o "database_id" que aparecer e cole em wrangler.toml
+
+# 2. Rode as migrations (schema + dados de exemplo) localmente
+npm run db:migrate:local
+npm run db:seed:local
+
+# 3. Suba em desenvolvimento (usa o binding do D1 local via Miniflare)
+npm run dev          # http://localhost:4321
+
+# 4. Build + deploy de verdade
+npm run build
+npm run db:migrate:remote   # uma vez, no D1 de produção
+npm run db:seed:remote      # opcional
+npm run deploy
 ```
 
-Troque `PORTA` e `SEU_IP` pelos seus. Se a hospedagem não mencionou porta nenhuma, é a padrão
-(22) e você pode omitir: `ssh root@SEU_IP`.
+> O projeto usa **bun** como gerenciador de pacotes (`bun.lock`, `mise.toml`).
+> Os scripts continuam acessíveis via `npm run <script>`.
 
-Ele pede a senha. **Ao digitar, não aparece nada na tela — nem asteriscos.** Isso não é
-travamento: é o terminal escondendo a senha. Digite (ou cole) e dê Enter.
+> Login padrão do CRM (criado pelo seed): `admin@deskcomm.local` / `admin123`.
+> Troque a senha pela tela **Equipe** após o primeiro acesso.
 
-> Na primeira conexão ele pergunta `Are you sure you want to continue connecting?` — responda
-> `yes`. É o servidor se apresentando pela primeira vez.
+`npm run check` roda o `tsc --noEmit` só de `src/**`; `npm run check:tests`
+estende o typecheck a `tests/**` (`tsconfig.tests.json`, com os tipos de Node).
+`npm test` roda a suíte vitest. Os comandos de agente/atalho do opencode
+(`/build`, `/test`, `/preflight`, `/audit`) estão em `.opencode/`.
 
-### 2. Rode o instalador
+## Validação
 
-Já dentro da VPS:
+O que roda e passa offline nesta máquina:
 
-```bash
-git clone https://github.com/melgarafael/DeskcommCRM.git
-cd DeskcommCRM
-bash hostgator-setup-kit/install.sh
-```
+- `npm run check` — zero erros de tipo (`src/**`, modo `strict`).
+- `npm run check:tests` — zero erros de tipo também nos testes (`tests/**`).
+- `npm test` — 26 arquivos, 264 testes verdes (`tests/**`).
+- `npm run build` — `astro build` conclui.
 
-É isso. **Você não instala Node, nem pnpm, nem compila nada** — a imagem do app já vem pronta.
-Se faltar Docker, o instalador pergunta e instala sozinho.
+O que só pode ser confirmado contra a sua conta Cloudflare: que o binding do D1
+resolve em runtime e que as migrations rodam sem erro de SQL contra um D1 real.
 
-### O que você precisa ter em mãos
-
-| Item | Onde conseguir |
-|---|---|
-| **VPS com Docker** | [HostGator](https://www.hostgator.com.br/52708-141-3-52.html) (parceria) — ou qualquer VPS com Docker. 4 GB de RAM recomendados |
-| **Domínio** | Um registro **A** apontando pro IP da VPS (ex.: `crm.suaempresa.com.br`) |
-| **Banco** | Conta grátis no [supabase.com](https://supabase.com) — 3 chaves + connection string do **Session pooler** |
-| **IA** | Uma chave de **OpenRouter**, **Anthropic** ou **OpenAI** — o instalador pergunta qual você quer |
-| **WhatsApp** | Seu número, conectado por QR code no onboarding (ou o canal oficial da Meta) |
-
-> 💡 **O Supabase pode ser criado pelo próprio instalador.** Exporte um
-> `SUPABASE_ACCESS_TOKEN` antes de rodar e ele cria o projeto, espera o banco ficar saudável,
-> busca as 4 credenciais e descobre o host do pooler testando conexão real — sem copiar e colar.
-
-### O que o instalador faz por você
-
-Ele **pergunta só o que é seu** (domínio, chaves, senha do admin), **valida cada resposta antes
-de seguir** — chave errada ele recusa na hora, não três passos depois — e cuida do resto:
-
-1. Gera todos os segredos técnicos sozinho (você não inventa senha nenhuma).
-2. Cria as extensões do Postgres e aplica o schema completo (`supabase/baseline.sql`).
-3. Cria o primeiro admin com o e-mail e a senha que você escolheu.
-4. Sobe a stack inteira com **HTTPS automático** e confere a saúde no fim.
-5. Instala o **cron das automações** (sem ele, as regras QUANDO/SE/ENTÃO ficam paradas na fila)
-   e o **agente de atualização**, que é o que faz o botão "Atualizar agora" existir na tela.
-
-**Rodar de novo não quebra nada** — o `install.sh` é idempotente: não duplica cron, não recria
-usuário, retoma de onde parou.
-
-> **Modo não-interativo:** copie `.env.hostgator.example` para `.env`, preencha e rode
-> `bash hostgator-setup-kit/install.sh --yes`.
-
-### Outra hospedagem? (Hostinger, Coolify, Dokploy, CapRover…)
-
-Funciona. Se a sua VPS já vem com um **proxy reverso próprio** ocupando as portas 80/443, o
-instalador **detecta isso sozinho** e publica o CRM através dele, em vez de tentar subir um
-Caddy que não caberia. Num caso específico — proxy em `--network host`, como faz a Hostinger —
-ele **pergunta em vez de adivinhar**, porque publicar atrás do proxy errado instala "com
-sucesso" um site mudo. Detalhes em [`hostgator-setup-kit/README.md`](hostgator-setup-kit/README.md#vps-que-já-vem-com-proxy-próprio-hostinger-coolify-dokploy).
-
-### Primeiro acesso
-
-Abra `https://<seu-domínio>` (o cadeado leva ~1 min pra aparecer), entre com o admin, e tenha o
-**Google Authenticator** ou **Authy** à mão *se* você quiser ligar a verificação em duas etapas — ela é **opcional** e fica em Configurações › Segurança; o primeiro login **não** a exige. No onboarding,
-escaneie o QR code com o WhatsApp do seu número.
-
-### 🤖 Prefere que uma IA instale pra você?
-
-O repositório traz **guias do assistente** que carregam sozinhos no Claude Code, Codex, Cursor,
-OpenCode ou Antigravity: instalar, montar um cliente por nicho, analisar métricas, afinar o prompt
-do agente e contribuir. Para tê-los em **qualquer pasta** — inclusive antes de clonar, no seu
-computador —, rode uma vez:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/scripts/instalar-guias.sh | bash
-```
-
-Depois abra uma sessão nova do seu assistente e diga *"quero instalar o CRM na minha VPS"*: pedir o
-assunto em português aciona o guia certo em qualquer um dos cinco. Para chamar um guia pelo nome,
-cada um tem o seu jeito — `/deskcomm-instalar` no Claude Code, no Cursor e no Antigravity;
-`$deskcomm-instalar` no Codex; no OpenCode, peça pelo nome, em linguagem natural.
-
-Os guias **não** se atualizam sozinhos: rodar o mesmo comando de novo traz a versão nova. Para
-desfazer:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/scripts/instalar-guias.sh | bash -s -- --remover
-```
-
-Com o repositório já clonado, os guias vêm dentro dele (`.agents/skills/`) e nem isso é preciso. Se
-você rodou o comando mesmo assim, saiba que no Claude Code o guia instalado vale mais que o do clone
-— e fica na versão do dia em que rodou, até rodar de novo (ou desfazer).
-Também funciona o jeito antigo: jogar só a pasta `hostgator-setup-kit/` no chat do **Claude Code**
-dentro da VPS — ele lê o [`CLAUDE.md`](hostgator-setup-kit/CLAUDE.md) do kit e conduz tudo em português.
-
----
-
-## 🔄 Atualizar
-
-Saiu versão nova? Há dois caminhos, e o primeiro **não exige terminal**.
-
-### Pela tela (recomendado)
-
-Quando existe versão nova, o rodapé do menu lateral acende **"Nova versão"** — só pro dono do
-servidor, porque avisar quem não pode atualizar é ruído. Clique e você cai em
-**Configurações → Atualização**, que mostra o que muda, faz **backup do banco sozinha** e
-acompanha cada fase (backup → código → banco → no ar) até terminar. Nada de SSH.
-
-Se a versão nova subir quebrada, o agente **volta pra imagem anterior sozinho** e grava essa
-volta no `.env` — sem isso, o próximo restart traria o app quebrado de novo, em silêncio.
-
-> Por baixo: o app só registra o pedido; quem executa é o agente que o `install.sh` deixou na
-> sua VPS, num cron que confere **a cada 5 minutos** — então a atualização começa em até 5
-> minutos depois do clique. Se esse agente estiver fora do ar, a tela avisa
-> **"Atualização automática indisponível"** e mostra o comando abaixo — ela não finge que deu certo.
-
-### Pelo terminal
-
-```bash
-cd /caminho/do/DeskcommCRM
-bash hostgator-setup-kit/update.sh
-```
-
-O comando faz, nesta ordem: (1) confere se há mesmo versão nova — se não houver, sai na hora;
-(2) **faz backup do banco antes de tocar em qualquer coisa**; (3) baixa o código novo;
-(4) atualiza o banco re-aplicando o `baseline.sql`, que é idempotente e **auto-curativo**
-(conserta sozinho dados bagunçados por versões antigas); (5) puxa a imagem nova do app;
-(6) confere a saúde no fim.
-
-**O alvo é a última versão publicada** (`v1.2.3`), não o topo da `main` — atualizar leva sempre
-a uma versão marcada e descrita no [`CHANGELOG.md`](CHANGELOG.md), nunca a um commit não testado.
-Ele **recusa** voltar pra uma versão anterior à instalada (isso desligaria coisas que você já tem);
-pra isso existe `--force`, de propósito.
-
-**Coisas normais que você vai ver:** um monte de `already exists` / `multiple primary keys` na
-parte do banco — **é esperado e inofensivo**, são coisas que já existiam. O script filtra esse
-ruído e mostra `✓ banco atualizado`. Se o banco estiver ocupado com o CRM atendendo, ele aplica de
-novo sozinho (até 3 passadas) e conta isso na tela — isso vale a partir da atualização seguinte à
-que instalar esta correção. Se aparecer `⚠ Apareceram avisos no banco que NÃO são os esperados`, aí sim guarde a
-mensagem: o **fim** da saída diz o que fazer em cada caso (repetir com `--force` quando foi o banco
-ocupado, declarar `SUPABASE_DB_ADMIN_URL` quando foi permissão). Restaurar o backup é o último recurso.
-
-**Deu ruim?** `bash hostgator-setup-kit/restore.sh` volta pro backup.
-**Quer só diagnosticar?** `bash hostgator-setup-kit/healthcheck.sh`.
-
-> ⚠️ **Numa instalação antiga que ainda não tem o agente da tela**, rode `update.sh` **duas
-> vezes**: a primeira execução ainda é a do script velho (que baixa o novo); a segunda instala
-> o agente e liga o botão.
-
-Passo a passo em linguagem simples: [`docs/ATUALIZANDO.md`](docs/ATUALIZANDO.md).
-
-### Outros comandos do kit
-
-| Script | Função |
-|---|---|
-| `install.sh` | Instala tudo (idempotente — pode rodar de novo) |
-| `update.sh` | Atualiza pra versão nova, com backup automático |
-| `backup.sh` | Backup do banco + sessões de WhatsApp |
-| `restore.sh` | Restaura um backup |
-| `reset-password.sh` | Redefine a senha de um usuário |
-| `reset-mfa.sh` | Remove o MFA de quem perdeu o celular |
-| `healthcheck.sh` | Diagnóstico de todos os serviços de uma vez |
-
-> **Backup importa:** o plano grátis do Supabase **não faz backup sozinho**. Vale agendar
-> `backup.sh` no cron diariamente. O `update.sh` já roda um backup antes de cada atualização.
-
----
-
-## ✨ O que é
-
-**Deskcomm** vem de **Desk** (mesa) + **comm** (comércio): **o comercial de mesa** — toda a operação de vendas do seu negócio numa mesa só, operada por pessoas e agentes de IA juntos.
-
-O projeto nasceu como CRM de e-commerce e a comunidade o levou muito além: hoje roda em **clínicas, imobiliárias, infoprodutos, agências, lojas e prestadores de serviço** — qualquer negócio que vende pelo WhatsApp. O produto acompanhou essa virada e virou um **sistema operacional de vendas**: agentes de IA com RAG por tenant atendem, qualificam, movem leads no funil, disparam automações e sabem a hora de passar pra um humano — com o CRM inteiro exposto via **MCP** pros agentes operarem de verdade. A história completa está em [`VISION.md`](VISION.md).
-
-### Diferenciais
-
-- 🤖 **Agentes de IA que operam o CRM** — RAG por tenant, skills que o agente executa sozinho durante o atendimento, memória da operação, análise de sentimento, handoff IA→humano auditado, IA como assignee de primeira classe e teto de gasto por organização. Não é chatbot decorativo: o agente atende, qualifica e move o funil.
-- 🔁 **Nada morre no silêncio** — follow-up que retoma a conversa esfriada (com tempo adaptativo e gatilhos por etapa do funil), radar do que está em risco de morrer sem resposta, e central de avisos pro que precisa de decisão humana.
-- 🧠 **Agentes que se auto-aprimoram** — conversas resolvidas viram conhecimento novo; a tela de **Evolução da IA** mostra se o agente está melhorando, onde erra e o que falta ensinar; **Propostas** são melhorias que a IA sugere pra si mesma, aplicáveis como versão nova — sempre com gate humano.
-- 🧩 **Multi-nicho por design** — vocabulário configurável por pipeline: lead vira *Cliente*, *Paciente* ou *Comprador*; won vira *Pago*, *Agendado* ou *Fechado*. O mesmo core serve e-commerce (nosso berço, com integração Nuvemshop), clínica, imobiliária ou infoproduto.
-- 💬 **WhatsApp de duas formas** — por **QR code** (WAHA, multi-número, com anti-banimento: throttle + jitter + janela de horário) ou pelo **canal oficial da Meta** (Cloud API, com templates aprovados e sincronizados). Mídia via Storage, STOP detection.
-- 🔀 **Escolha sua IA** — OpenRouter, Anthropic ou OpenAI, decidido na instalação e trocável depois pela tela, **por parte do sistema** (o que conversa não precisa ser o que indexa).
-- 👥 **Governança de atendimento** — RBAC server-side de verdade, atribuição/transferência auditada, fila com rodízio, roteamento automático por intenção e escopo de visualização por papel.
-- 🏢 **Multi-tenant + LGPD by-design** — RLS em toda tabela tenant-aware com teste de isolamento como gate de CI; anonimização preferida sobre delete; audit append-only com retenção 5 anos.
-- 🖥️ **Self-hosted de verdade** — seus dados na sua VPS; instalação e atualização com 1 comando (ou 1 clique); sem versão paga, sem feature travada.
-
-### 🔌 Webhooks & Automações
-
-Todo tenant pode criar **fontes de captação**: um endereço público (`/api/v1/webhooks/in/<token>`) que recebe leads de landing pages, formulários próprios ou ferramentas como Zapier/n8n via POST (JSON ou `application/x-www-form-urlencoded`) e já entra direto no funil/estágio escolhido — sem código, sem integração customizada por tenant. Em cima dessas fontes (e dos outros eventos do CRM — lead mudou de etapa, ganhou tag, chegou mensagem no WhatsApp), o tenant monta **automações**: regras no formato QUANDO/SE/ENTÃO que disparam ações como adicionar tag, mover o lead no funil, atribuir a um atendente, mandar uma mensagem de WhatsApp ou avisar outro sistema via webhook de saída.
-
-Na UI, tudo mora em **Webhooks** na sidebar (visível só pra quem tem papel `manager`/`admin`). A tela tem três abas: **Receber dados** (criar fonte, copiar o endereço/formulário pronto, disparar um lead de teste, ver os últimos recebimentos), **Automações** (montar a regra, que sempre nasce pausada até você revisar e ligar) e **Atividade** (timeline de cada execução, com o resultado de cada ação e reenvio manual quando uma chamada externa falha).
-
-Por baixo, cada evento vira uma linha em `event_log` — nenhum trigger de banco faz chamada HTTP diretamente. Quem drena essa fila é a rota `/api/v1/cron/event-log-drain`, chamada a cada minuto. **O `install.sh`/`update.sh` já configuram esse cron sozinhos** — sem ele, as automações são criadas normalmente mas nunca rodam.
-
----
-
-## 🖥️ O que você opera (as telas)
-
-| Grupo | Telas |
-|---|---|
-| **Atendimento** | **Inbox** (conversas de WhatsApp, você e a IA lado a lado) · **Radar** (quem esfriou e ainda está aberto) · **Respostas rápidas** |
-| **CRM** | **Kanban** (onde cada negócio está no funil) · **Contatos** · **Funis** (etapas, vocabulário do negócio e motivos de perda) |
-| **Agente de IA** | **Agentes** · **Follow-ups** · **Roteadores** · **Provedores** e **Credenciais** · **Conhecimento** (RAG) · **Memória** · **Skills** · **Casos** · **Alertas** · **Propostas** · **Execuções** · **Uso e orçamento** |
-| **Canais** | **Conexões** (QR ou canal oficial da Meta, com saúde, reconexão e templates) · **Nuvemshop** · **Webhooks** |
-| **Análise** | **Desempenho** (funil e performance por atendente) · **Evolução da IA** · **Audit Log** |
-| **Organização** | **Equipe** · **Distribuição de atendimento** · **Organização** · **LGPD** · **API Tokens** · **Segurança** (MFA, códigos de recuperação, sessões) · Perfil, Notificações, Billing |
-
-Toda tela tem porta na navegação — o CI reprova tela que existe mas em que só se chega digitando a URL.
-
----
-
-## 🧱 Stack
-
-| Camada | Escolha | Por quê |
-|---|---|---|
-| **Frontend** | Next.js 16 App Router (Turbopack) + React 19 + TypeScript 6 estrito | Server Components + Route Handlers no mesmo repo |
-| **Estilo** | Tailwind + shadcn/ui (`new-york`, neutral) | Customizável sem lock-in |
-| **DB** | Supabase (Postgres + RLS + `vector`) | Multi-tenant nativo, embedding pra RAG |
-| **Auth** | Supabase Auth via `@supabase/ssr` | Cookie SameSite=Strict, HttpOnly |
-| **Realtime** | Supabase Realtime | postgres_changes + broadcast |
-| **Storage** | Supabase Storage (URLs assinadas) | Bucket privado `whatsapp-media` |
-| **WhatsApp** | WAHA Plus (engine NOWEB) + Meta Cloud API | QR pra começar rápido; canal oficial pra escala |
-| **Filas** | `event_log` table + workers (cron) | Trigger de banco nunca faz HTTP |
-| **Rate limit** | Upstash Redis (sliding window) | Serverless, free tier suficiente |
-| **AI** | Vercel AI SDK v7 — OpenRouter, Anthropic, OpenAI e Google | Instalador pergunta qual; troca depois pela tela |
-| **Validação** | Zod | Input externo, env, payloads |
-| **Observability** | Sentry (scrub em erro, transação, span e breadcrumb) | Telemetria opt-in no install |
-| **Hospedagem** | VPS com Docker (HostGator/SP na parceria) | App + WhatsApp + workers na sua máquina |
-
-Detalhes: [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
----
-
-## 🧑‍💻 Desenvolvimento (só pra contribuir com o código)
-
-> ⚠️ **Se você quer USAR o CRM, não é aqui** — use o [instalador da VPS](#-instalar-na-sua-vps-o-caminho-principal).
-> Esta seção é pra quem vai mexer no código.
-
-```bash
-git clone https://github.com/melgarafael/DeskcommCRM.git
-cd DeskcommCRM
-
-nvm use                     # Node 22
-npm install -g pnpm && pnpm install
-
-cp .env.example .env.local  # guia completo em docs/SETUP.md
-
-docker compose up -d        # WAHA local (opcional em dev sem WhatsApp)
-
-# Schema: aplique o baseline, NÃO as migrations.
-# As migrations 0001-0009 e 0013 são stubs `SELECT 1;` — a cadeia não sobe do zero.
-# O schema real vive no baseline.sql, o mesmo que o install.sh aplica na VPS.
-# `supabase db push` "passa" e deixa o banco vazio.
-supabase link --project-ref <seu-ref>
-
-# Num projeto Supabase NOVO, habilite antes as extensões que o schema usa —
-# sem elas o baseline para em `type public.vector does not exist`.
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
-  'create extension if not exists vector with schema public;
-   create extension if not exists citext with schema public;
-   create extension if not exists pg_trgm with schema public;'
-
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/baseline.sql
-
-pnpm dev
-```
-
-App: <http://localhost:3000> · Health check: <http://localhost:3000/api/v1/health>
-
-[`docs/SETUP.md`](docs/SETUP.md) é o tutorial completo de **todas as integrações** (Supabase, WAHA, provedores de IA, Upstash, Sentry, Resend, Nuvemshop) — ~60–90 min do zero ao app rodando.
-
----
-
-## 📁 Estrutura
+## O que mudou por dentro
 
 ```
-DeskcommCRM/
-├── app/                    # Next.js App Router
-│   ├── (admin)/            # Rotas super-admin (impersonate, tenants)
-│   ├── (public)/           # Login, recovery
-│   ├── app/                # Rotas autenticadas: inbox, radar, kanban, contacts,
-│   │                       #   connections, ai/*, integrations, metrics, lgpd,
-│   │                       #   audit, team, settings
-│   └── api/v1/             # API REST canônica (196 route handlers)
-├── components/             # React (ui/, inbox/, kanban/, shell/, ...)
-├── lib/                    # supabase/, waha/, channels/, ai/, agent-engine/,
-│                           #   api/, routing/, navigation/, env.ts
-├── workers/                # consumers de event_log (IA, RAG, LGPD, mídia, rotinas)
-├── supabase/migrations/    # SQL versionado (+ baseline.sql pro self-host)
-├── tests/{e2e,unit,invariants,shell}/
-├── scripts/                # seeds, qa-waves, manutenção
-├── docs/                   # PRDs, specs, runbooks, SETUP.md, ATUALIZANDO.md
-└── hostgator-setup-kit/    # instalação e atualização self-host
+migrations/
+  0001_init.sql      Schema do D1 — núcleo ERP (uma tabela por entidade)
+  0002_seed.sql       Dados de exemplo do ERP (ingredientes + configurações padrão)
+  0003_crm.sql       Schema do D1 — CRM (users, sessions, contacts, pipelines,
+                      stages, deals, tasks, quick replies, calendar events,
+                      conversations, messages, catalog products)
+  0004_crm_seed.sql   Seed do CRM (admin padrão, funil, contatos, conversas, agenda…)
+  0005_crm_features.sql            Schema do D1 — rolls de features do CRM (atividades
+                                   de lead, notas de conversa, etiquetas, tipos de
+                                   agenda + colunas novas de deals, conversations e
+                                   calendar_events)
+  0006_crm_seed_features.sql       Seed do CRM — etiquetas (quente, casamento, vip) e
+                                   tipos de agenda (Reunião, Degustação, Entrega, Outro)
+0007_waha.sql           Schema do D1 — sessão WAHA/WhatsApp e fila de webhooks
+  0008_order_history_seed.sql      Seed do painel "Pedidos" da caixa de entrada —
+                                    pedidos que casam com os contatos do CRM (por nome)
+                                    para exercitar a fila LIFO de histórico
+  0009_inbox_orders.sql             Schema do D1 — coluna orders.createdFrom
+                                    ("inbox" quando criado pelo compositor de
+                                    pedidos da caixa de entrada)
+0010_inbox_orders_seed.sql        Seed do "Novo pedido" — produtos ERP que o
+                                    compositor carrega do menu Produtos + um
+                                    pedido criado via inbox (createdFrom='inbox')
+  0011_inbox_orders_chart_seed.sql  Seed multi-ano do gráfico "Pedidos por
+                                    período" (primeiro/segundo gráfico do inbox)
+  0012_inbox_month_chart_seed.sql   Seed de datas RELATIVAS (mês atual, hoje,
+                                    mês anterior, mesmo mês no ano passado) para
+                                    o gráfico "Pedidos do mês"
+ wrangler.toml          Binding do D1 ("DB") usado pelo Worker
+astro.config.ts         output: 'server' + adapter cloudflare (platformProxy
+                         ligado, para o binding funcionar também em `astro dev`)
+
+src/server/             Código que só roda no Worker (nunca é enviado ao navegador)
+  context.ts             pega o binding D1 do contexto da rota
+  db.ts                   interface mínima do D1 usada pela app (prepare) —
+                           mantém a camada testável com o FakeD1
+  mapping.ts              converte JSON/boolean <-> colunas TEXT/INTEGER do D1
+  sql.ts                   monta INSERT/UPDATE parametrizados dinamicamente
+  crud.ts                  list/get/insert/update/delete genéricos (uma
+                            implementação para todas as tabelas)
+  tables.ts                nome da tabela + quais colunas são JSON/boolean,
+                            por entidade — única fonte de verdade
+  routeFactory.ts           gera os handlers GET/POST/PUT/DELETE; cada rota em
+                            src/pages/api/**/*.ts só passa a tabela certa
+  auth.ts                   hash/verify de senha + sessões em D1
+  waha.ts                   cliente REST do WAHA (teste de conexão): teto de
+                             relógio em toda chamada e erro que nunca carrega o
+                             corpo da resposta (só o status HTTP)
+
+src/pages/api/            Rotas do ERP (uma pasta por entidade) + settings.ts
+  whatsapp/health.ts        teste de conexão do WhatsApp (WAHA), com sessão
+  crm/**                   Rotas do CRM (contacts, conversations, messages,
+                            pipelines, stages, deals, tasks, quick-replies,
+                            calendar-events, catalog-products, activities,
+                            conversation-notes, tags, appointment-types)
+  auth/**                  login / logout / me
+  users/**                 CRUD de usuários (equipe)
+
+src/domain/crm.ts          Tipos do CRM (dinheiro sempre em centavos)
+src/domain/crmMath.ts      Helpers puros (funil, inbox, agenda, tarefas, atividades,
+                            etiquetas, duplicatas de contato)
+src/domain/whatsapp.ts     Fatos do servidor WAHA + classificação do health
+                            (puro, sem rede, testável)
+src/domain/theme.ts        Decisão pura claro/escuro (sem DOM, testável)
+src/ui/theme.ts            Aplica `data-theme`, lê/grava localStorage, botão
+src/services/CrmService.ts Orquestração do CRM para as views
+src/repositories/
+  IRepository.ts           assíncrono nas mutações (rede), síncrono nas
+                            leituras (cache local hidratado por load())
+  ApiRepository.ts          implementação HTTP genérica de IRepository<T>
+  ApiSettingsRepository.ts   idem, para o registro único de configurações
+  ApiAuthRepository.ts       login/logout/me + token no localStorage
+src/ui/views/crm/          Views do CRM (crmUi.ts + uma por tela)
+src/ui/{Sidebar,Router,main}.ts  Nav em grupos, rotas e remap de legado
+src/styles/global.css       Tokens + CSS dos componentes (SPA, sem Tailwind)
+.opencode/                  Agentes, comandos e skill de convenções da migração
 ```
 
----
+`LocalStorageRepository`, `SettingsRepository` (versão localStorage) e
+`state/seedData.ts` foram removidos — o seed agora vive em
+`migrations/0002_seed.sql`.
 
-## 🧪 Testes
+### Dependências enxutas
 
-```bash
-pnpm typecheck     # tsc --noEmit -p tsconfig.typecheck.json (inclui tests/)
-pnpm lint          # eslint next/core-web-vitals
-pnpm test:unit     # Vitest (NÃO inclui tests/invariants/**)
-pnpm test:db       # Postgres efêmero + baseline install/update + invariantes
-pnpm test:e2e      # Playwright (requer dev server)
-```
+O port do CRM não usa React: o pacote `@astrojs/react` e todas as dependências
+React/Radix/shadcn (`react`, `react-dom`, `@radix-ui/*`, `@phosphor-icons/react`,
+`class-variance-authority`, `clsx`, `tailwind-merge`, `@types/react*`) foram
+removidas de `package.json` e do `bun.lock`. `tests/dependencies.test.ts` é a
+trava de regressão que garante que nada disso volte (sem `.tsx`/`.jsx`, sem
+`@astrojs/react` no `astro.config.ts`).
 
-**Estes checks são obrigatórios** pra mergear na `main`. A lista abaixo já disse "quatro" e depois "cinco" — **meça, não confie nela**:
+### SOLID, na prática desta mudança
 
-```bash
-gh api repos/melgarafael/DeskcommCRM/branches/main/protection \
-  --jq '.required_status_checks.contexts|join(", ")'
-# em 2026-08-14: verify, build-and-size, invariants, e2e, imagens-ok
-```
+- **Dependency Inversion** é o motivo desta migração ter sido tranquila:
+  `services/*` sempre dependeram de `IRepository<T>` (interface), nunca de
+  `LocalStorageRepository`. Trocar a implementação por `ApiRepository` não
+  exigiu tocar em `PricingService`, `StockService`, `OrderService` ou
+  `CustomerService` além de tornar os métodos que gravam dados em `async`.
+- **Open/Closed** nas rotas: `routeFactory.ts` + `tables.ts` significam que
+  adicionar uma entidade nova no futuro é configurar uma tabela, não escrever
+  SQL novo. O CRM inteiro entrou novo seguindo exatamente esse caminho.
+- **Single Responsibility** nas camadas do servidor: `mapping.ts` só sabe
+  converter JSON/boolean; `sql.ts` só monta texto SQL; `crud.ts` só orquestra
+  as duas coisas contra o D1; `auth.ts` só cuida de senha e sessão.
 
+### Views agora são assíncronas nas mutações
 
-| Check | O que faz |
-|---|---|
-| `verify` | typecheck + lint + `lint:channels` + `test:unit` + `test:shell` |
-| `invariants` | sobe um Postgres limpo, aplica o `baseline.sql` em modo **install** e depois em modo **update** — as duas passadas com `ON_ERROR_STOP=1`, que é o que torna a segunda uma prova de idempotência e não só um "terminou" —, e roda os invariantes de RBAC, atribuição, escopo, roteamento, follow-up, webhooks e automações |
-| `build-and-size` | `pnpm build` em Node 22 |
-| `e2e` | sobe Supabase local, aplica o `baseline.sql` e roda **48 das 49 specs** Playwright pelo frontend |
-| `imagens-ok` | reprova quando qualquer uma das três imagens Docker (`app`, `worker`, `scheduler`) não constrói — é o artefato que o self-hoster instala |
+Toda ação que grava dado faz `await` na chamada ao repositório/serviço antes de
+fechar o modal — porque agora isso é uma chamada de rede para o D1, não mais uma
+escrita instantânea em memória. As telas continuam lendo de forma síncrona
+(`getAll()`/`getById()`) a partir do cache que é atualizado a cada resposta do
+servidor.
 
-A única spec fora do `e2e` é `vps-fresh-onboarding` — ela precisa de WAHA + Redis + Resend + Nuvemshop de verdade. Ela é a **P0** da nossa doutrina de QA visual, então `e2e` verde **não** prova a jornada de instalação fresca; essa se prova numa VPS.
+## Convenções de migração
 
-Entre os invariantes está o **teste de isolamento RLS**: cria 2 organizações, simula os claims JWT pelo mesmo caminho `auth.uid()` / `fn_user_org_ids()` que as policies de produção usam, e prova que um usuário da org A enxerga **zero linhas** da org B em `conversations`, `messages`, `contacts` e `crm_leads`. Antes disso, um caso de controle prova que as linhas da org B realmente existem — sem ele, o teste passaria com a tabela vazia.
+As regras de como portar features do DeskcommCRM (camadas, profundidade de
+import nas rotas, PK de `sessions` ser `token`, shapes JSON/boolean, testes)
+estão em `.opencode/skills/migration-conventions/SKILL.md`, e o status do port
+em `MIGRATION.md`.
 
----
+## Responsividade
 
-## 📚 Documentação
+Sidebar fixa no desktop, vira menu hambúrguer até 880px; formulários e itens de
+linha colapsam para coluna única em telas pequenas.
 
-| Doc | O que tem |
-|---|---|
-| [`hostgator-setup-kit/README.md`](hostgator-setup-kit/README.md) | **Instalação self-host** — o kit, os scripts, as hospedagens com proxy próprio |
-| [`docs/ATUALIZANDO.md`](docs/ATUALIZANDO.md) | **Como atualizar** sua instalação, em linguagem simples |
-| [`VISION.md`](VISION.md) | **Visão e posicionamento** — o que o projeto é, no que acredita e pra onde vai |
-| [`CHANGELOG.md`](CHANGELOG.md) | O que mudou em cada versão — **leia a seção da versão antes de atualizar** |
-| [`docs/SETUP.md`](docs/SETUP.md) | Setup de desenvolvimento, passo a passo de todas as integrações |
-| [`docs/white-label.md`](docs/white-label.md) | **Instalar para clientes** — trocar a marca, uma instalação por cliente vs compartilhada, revenda |
-| [`docs/runbooks/waha-hostgator.md`](docs/runbooks/waha-hostgator.md) | Runbook de WAHA em produção (dimensionamento, recuperação) |
-| [`docs/runbooks/deploy.md`](docs/runbooks/deploy.md) | Deploy em produção |
-| [`CLAUDE.md`](CLAUDE.md) | Convenções não-negociáveis (leitura obrigatória pra contribuir) |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Visão de 1 página da arquitetura |
-| [`docs/index.md`](docs/index.md) | Índice dos 157 documentos, com regra de precedência |
-| [`docs/prd/`](docs/prd/) · [`docs/specs/`](docs/specs/) | PRDs e specs técnicas (schema SQL, payloads, MCP, governança) |
+## Tema claro/escuro
 
----
+O modo é o atributo `data-theme` no `<html>`; os tokens de `global.css` têm
+blocos `[data-theme="light"]` e `[data-theme="dark"]` desenhados separados. O
+script inline de `BaseLayout.astro` aplica o tema antes da primeira pintura
+(sem flash), seguindo o sistema quando ainda não há escolha salva
+(`deskcomm-theme` no `localStorage`). O botão ☀/☾ na topbar alterna e persiste a
+escolha (`src/ui/theme.ts`, lógica pura em `src/domain/theme.ts`).
 
-## 🤝 Contribuindo
+## WhatsApp (WAHA)
 
-Esse projeto é open source pra comunidade. Toda contribuição é bem-vinda — desde fix de typo em doc até feature nova.
+Teste de conexão do WhatsApp via [WAHA](https://waha.devlike.pro/), sem o
+realtime completo: cliente REST mínimo (`src/server/waha.ts`) + rota
+`GET /api/whatsapp/health` (exige Bearer de sessão). Ela responde com um
+relatório estável (`src/domain/whatsapp.ts`):
 
-**Antes de abrir PR:**
+- `200` quando o servidor responde, a chave é aceita e a sessão está `WORKING`;
+- `502` quando está configurado mas inutilizável — `detail` diz o porquê
+  (`credencial_recusada_pelo_transporte`, `waha_inacessivel`,
+  `sessao_inexistente`, `sessao_sem_conexao: <status>`);
+- `503` com `waha_nao_configurado` quando falta env.
 
-1. Leia [`CLAUDE.md`](CLAUDE.md) (~5 min) — convenções não-negociáveis (multi-tenancy, RLS, audit, LGPD).
-2. Leia [`CONTRIBUTING.md`](CONTRIBUTING.md) — fluxo de branches, commits, epic-executor.
-3. Siga o [Código de Conduta](CODE_OF_CONDUCT.md).
+Config em `.dev.vars` (copie de `.dev.vars.example`): `WAHA_API_BASE_URL`,
+`WAHA_API_KEY` (secret em produção: `wrangler secret put`) e
+`WAHA_SESSION_NAME` (padrão `default`). Toda chamada tem teto de relógio (15s) e
+a exceção nunca carrega o corpo devolvido pelo WAHA — só o status HTTP.
 
-**Fluxo curto:**
+### Como subir e testar
 
-```bash
-git checkout -b feat/short-slug
-# implementa + testes
-pnpm typecheck && pnpm lint && pnpm lint:channels && pnpm test:unit && pnpm test:shell && pnpm build
-pnpm test:db   # precisa de Docker — é o job `invariants`, obrigatório no merge
-git commit -m "feat(escopo): descrição"
-# abre PR — o template já traz o checklist de Definition of Done
-```
+`npm run waha:up` sobe um WAHA local (`docker-compose.waha.yml`, engine NOWEB) —
+precisa de Docker rodando, porta `3000` livre. Depois: `npm run waha:smoke` roda o
+teste de conexão ao vivo (sai `0` com a chave aceita, sessão pareada ou em
+`SCAN_QR_CODE`). Pareamento do QR e operação: ver procedimento completo em
+`docs/whatsapp-waha.md`.
 
-Essas duas linhas são **tudo o que dá para rodar na sua máquina**, de propósito: rodar só metade e
-descobrir o resto como surpresa vermelha depois de horas de espera é a pior primeira experiência
-que este repositório sabe entregar.
+## Módulos
 
-Dois gates obrigatórios **não** cabem aí e só rodam no CI: o `e2e` (precisa de Supabase local) e
-o `imagens-ok` (constrói as três imagens Docker). Verde na sua máquina não é verde no merge.
+**CRM:** Painel, Contatos, Inbox (conversas + respostas rápidas), Funil
+(kanban de deals), Atividades (registro de ações por lead), Tarefas, Agenda,
+Catálogo, Respostas rápidas, Etiquetas e Equipe (usuários + login). Tudo em
+Cloudflare D1.
 
-**Definition of Done:** typecheck zero, lint zero, testes relevantes verdes, RLS testada se toca tabela tenant-aware, audit log emitido em mutações, migration versionada **+ apêndice no `baseline.sql`** se muda schema (senão a mudança não chega em quem se auto-hospeda). Detalhes em [`CLAUDE.md`](CLAUDE.md#definition-of-done).
-
----
-
-## 🐛 Reportando bugs
-
-Abra uma [issue](https://github.com/melgarafael/DeskcommCRM/issues/new/choose) — o template pede o que precisamos (ambiente, `/api/v1/health`, steps). Rodar `bash hostgator-setup-kit/healthcheck.sh` e colar a saída ajuda muito.
-
-Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [relato privado de vulnerabilidades](https://github.com/melgarafael/DeskcommCRM/security/advisories/new). Detalhes em [`SECURITY.md`](SECURITY.md).
-
----
-
-## 🗺️ Roadmap
-
-### ✅ Entregue
-
-- **Fundação & plataforma** — auth (MFA pra admin), multi-tenancy com RLS + teste de isolamento, RBAC 4 papéis, audit log append-only, onboarding de tenant.
-- **Atendimento WhatsApp** — inbox 3 painéis em tempo real, conexões multi-número por **QR (WAHA)** ou **canal oficial da Meta** (templates aprovados e sincronizados), mídia via Storage, anti-banimento (throttle + jitter + janela de horário), STOP detection.
-- **CRM & pedidos** — kanban com vocabulário configurável por nicho (fractional indexing), gestão de funis pela tela, customer 360, contatos, tags, integração Nuvemshop.
-- **IA nativa** — agentes com RAG por tenant (pgvector), **skills** que o agente executa sozinho, **memória da organização**, roteador de intenção por número, análise de sentimento, handoff IA→humano, teto de gasto por org, MCP server interno.
-- **Escolha de provedor de IA** — OpenRouter, Anthropic ou OpenAI, decidido na instalação e trocável por parte do sistema pela tela.
-- **Follow-up vivo** — retomada de conversa esfriada com tempo adaptativo, gatilhos por etapa do funil e por caso, fila com rodízio, e o Radar do que corre risco de morrer sem resposta.
-- **LGPD** — export e redact via workers, anonimização em cascata, consentimento auditado.
-- **Self-host** — `hostgator-setup-kit` (app + WhatsApp + banco com 1 comando), `baseline.sql` auto-curativo, **atualização pela tela** com backup automático, runbook de produção.
-- **Webhooks & automação** — fontes de captação + regras QUANDO/SE/ENTÃO + gatilhos pra sistemas externos.
-- **Governança de atendimento** — RBAC server-side em toda a API, atribuição e transferência auditadas (IA como assignee de 1ª classe), visualização por papel (RLS) + métricas por atendente, roteamento automático com fila e painel de gestão, e contrato de governança pra agentes de IA externos ([`docs/specs/14`](docs/specs/14-contrato-governanca-agentes-externos.md)).
-- **Operação visível** — motivo da retenção anti-ban traduzido na conversa, central de avisos com severidade, aviso de mensagem presa, controle de proteção de envio (janela/ritmo/teto), capacidades declaradas do agente e propostas do flywheel aplicáveis como versão nova (com gate humano).
-
-### 🔮 Próximo
-
-- **MCP público** — capabilities do CRM expostas pro ecossistema de agentes: plugue o agente que quiser e ele opera o Deskcomm.
-- **Templates por nicho** — pipelines e vocabulários prontos pra clínica, imobiliária, infoproduto e serviços (e-commerce já entregue).
-- **Integrações** — VTEX e Shopify via adapter pattern (Nuvemshop já entregue).
-- **Identity probabilística** — unificação de contatos entre canais.
-
----
-
-## 💬 Comunidade
-
-- **Discussões:** [GitHub Discussions](https://github.com/melgarafael/DeskcommCRM/discussions) — pra perguntas, ideias, showcase.
-- **Issues:** [GitHub Issues](https://github.com/melgarafael/DeskcommCRM/issues) — bugs e tasks.
-- **Instagram:** [@melgarafael](https://www.instagram.com/melgarafael)
-- **YouTube:** [youtube.com/@melgarafael](https://www.youtube.com/@melgarafael)
-
----
-
-## 📜 Licença
-
-Distribuído sob a licença **MIT** — veja [`LICENSE`](LICENSE). Você pode usar, modificar
-e distribuir livremente, inclusive comercialmente. O software é fornecido **"como está",
-sem garantias** (ver cláusula de isenção no `LICENSE`).
-
----
-
-## 🛟 Suporte & responsabilidades (self-host)
-
-Este é um projeto **self-host**: cada pessoa roda o CRM na **própria infraestrutura**
-(VPS, banco Supabase e chave de IA próprios). Isso implica:
-
-- **Suporte é comunitário e "as-is".** Dúvidas e bugs entram como
-  [Issues](https://github.com/melgarafael/DeskcommCRM/issues) ou
-  [Discussions](https://github.com/melgarafael/DeskcommCRM/discussions). Não há SLA nem
-  suporte garantido — é open source mantido por boa vontade.
-- **Você é responsável pela sua instalação.** Atualizações não são automáticas (você clica
-  ou roda `update.sh` quando quiser), e manter/backup do seu servidor é com você.
-- **LGPD — atenção:** quem **hospeda** a instância é o **controlador** dos dados pessoais
-  ali tratados (clientes, conversas, pedidos), com as obrigações legais decorrentes. Os
-  mantenedores do projeto **não são** controladores nem operadores da sua instância, e não
-  têm acesso ao seu banco, ao seu WhatsApp nem ao seu storage. A única coisa que pode sair
-  da sua máquina para nós é o relatório de erro descrito abaixo — e só se você deixar.
-- **Telemetria (Sentry):** o `install.sh` **pergunta** durante a instalação e respeita a
-  sua resposta; em modo não-interativo, sem `SENTRY_DSN` definido, a telemetria fica
-  **desligada**. Se você aceitar o Sentry da comunidade, o que é enviado são **relatórios
-  de erro** (stack trace) com CPF, telefone e e-mail substituídos, cabeçalhos sensíveis
-  removidos, e token de webhook/convite redigido da URL — **sem** rastreamento de
-  performance e **sem** replay de sessão, que ficam em 0 nesse caminho. Para desligar a
-  qualquer momento: `SENTRY_DSN=off` no `.env`. Para mandar ao **seu** Sentry (aí sim com
-  performance e replay): `SENTRY_DSN=<seu-dsn>`. O que é redigido, e por quê, está em
-  [`lib/sentry/scrub.ts`](lib/sentry/scrub.ts); a resolução do DSN em
-  [`lib/sentry/dsn.ts`](lib/sentry/dsn.ts).
-
----
-
-## 🙏 Agradecimentos
-
-- **WAHA** ([devlikeapro](https://waha.devlikeapro.com/)) — engine WhatsApp.
-- **Supabase** — Postgres + Auth + Storage + Realtime numa stack só.
-- **HostGator** — parceria de infraestrutura que tornou o self-host de 1 comando possível.
-- **Anthropic**, **OpenAI** e **OpenRouter** — os provedores de IA que o CRM sabe usar.
-- **shadcn/ui** — base de componentes.
-- A comunidade que nos levou do e-commerce pra clínicas, imobiliárias, infoprodutos e além — vocês definiram o que este projeto é.
-
----
-
-<div align="center">
-
-**Built with ☕ in Brasil** · **Made for the community**
-
-Siga o desenvolvimento: [Instagram](https://www.instagram.com/melgarafael) · [YouTube](https://www.youtube.com/@melgarafael)
-
-</div>
+**Ateliê:** Painel, Ingredientes, Componentes (bases/recheios/coberturas),
+Produtos (receita + mão de obra + despesas fixas + margens, tudo editável por
+produto), Estoque, Pedidos (status, pagamento, baixa de estoque), Clientes e
+Configurações — todos persistidos em Cloudflare D1.
