@@ -8,6 +8,7 @@
     "strict": true,
     "noImplicitAny": true,
     "skipLibCheck": true,
+    "experimentalDecorators": true,
     "types": []
   },
   "include": ["src/**/*", ".astro/types.d.ts", "worker-configuration.d.ts"]

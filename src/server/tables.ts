@@ -87,3 +87,11 @@ export const TAGS_SHAPE: TableShape = { boolFields: ['ativo'] };
 
 export const APPOINTMENT_TYPES_TABLE = 'appointment_types';
 export const APPOINTMENT_TYPES_SHAPE: TableShape = { boolFields: ['ativo'] };
+
+// ── Action Logs (per-client audit trail) ────────────────────────────────
+
+export const ACTION_LOGS_TABLE = 'action_logs';
+export const ACTION_LOGS_SHAPE: TableShape = {
+  jsonFields: ['metadata'],
+  boolFields: []
+};

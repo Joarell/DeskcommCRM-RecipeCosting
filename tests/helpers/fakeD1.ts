@@ -8,6 +8,8 @@ const UPDATE_RE = /^UPDATE (\w+) SET (.+) WHERE (\w+) = \?$/;
 const DELETE_RE = /^DELETE FROM (\w+) WHERE (\w+) = \?$/;
 const SELECT_ONE_RE = /^SELECT \* FROM (\w+) WHERE (\w+) = \?$/;
 const SELECT_ALL_RE = /^SELECT \* FROM (\w+)$/;
+const SELECT_WHERE_RE = /^SELECT \* FROM (\w+)\s+WHERE\s+(.+?)\s+ORDER BY\s+(\w+)\s+(DESC|ASC)\s+LIMIT\s+\?\s+OFFSET\s+\?$/s;
+const SELECT_WHERE_SIMPLE_RE = /^SELECT \* FROM (\w+)\s+WHERE\s+(.+)$/s;
 
 function splitIdentifiers(list: string): string[] {
   return list.split(',').map((s) => s.trim());
@@ -91,7 +93,62 @@ export class FakeD1 {
       const [, table, column] = one;
       return this.rows(table).filter((r) => r[column] === String(values[0]));
     }
+    const whereMatch = SELECT_WHERE_RE.exec(sql);
+    if (whereMatch) {
+      const [, table, whereClause, orderBy, orderDir, limit, offset] = whereMatch;
+      let rows = this.rows(table);
+      const conditions = this.parseWhereClause(whereClause, values.slice(0, -2));
+      rows = rows.filter((r) => conditions.every(([col, op, val]) => {
+        const cell = r[col];
+        switch (op) {
+          case '=': return cell === val;
+          case '!=': return cell !== val;
+          case '>': return String(cell) > String(val);
+          case '<': return String(cell) < String(val);
+          case '>=': return String(cell) >= String(val);
+          case '<=': return String(cell) <= String(val);
+          default: return true;
+        }
+      }));
+      if (orderDir === 'DESC') {
+        rows.sort((a, b) => String(b[orderBy]).localeCompare(String(a[orderBy])));
+      } else {
+        rows.sort((a, b) => String(a[orderBy]).localeCompare(String(b[orderBy])));
+      }
+      const lim = Number(values[values.length - 2]);
+      const off = Number(values[values.length - 1]);
+      return rows.slice(off, off + lim);
+    }
+    const simpleWhere = SELECT_WHERE_SIMPLE_RE.exec(sql);
+    if (simpleWhere) {
+      const [, table, whereClause] = simpleWhere;
+      let rows = this.rows(table);
+      const conditions = this.parseWhereClause(whereClause, values);
+      return rows.filter((r) => conditions.every(([col, op, val]) => {
+        const cell = r[col];
+        switch (op) {
+          case '=': return cell === val;
+          case '!=': return cell !== val;
+          default: return true;
+        }
+      }));
+    }
     return null;
+  }
+
+  private parseWhereClause(
+    clause: string, values: unknown[]
+  ): Array<[string, string, unknown]> {
+    const conditions: Array<[string, string, unknown]> = [];
+    const parts = clause.split(' AND ');
+    let valueIndex = 0;
+    for (const part of parts) {
+      const match = part.trim().match(/^(\w+)\s*(=|!=|>|<|>=|<=)\s*\?$/);
+      if (match) {
+        conditions.push([match[1], match[2], values[valueIndex++]]);
+      }
+    }
+    return conditions;
   }
 
   private executeInsert(sql: string, values: unknown[]): Row[] | null {

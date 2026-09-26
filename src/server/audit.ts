@@ -37,6 +37,10 @@ export async function recordAudit(
   );
 }
 
-export function clientIp(request: Request): string {
+export interface RequestHeaders {
+  headers: Headers;
+}
+
+export function clientIp(request: RequestHeaders): string {
   return request.headers.get('cf-connecting-ip') ?? '';
 }

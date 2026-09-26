@@ -986,8 +986,19 @@
 .table-wrap tbody tr:hover {
   background: var(--color-surface-elevated);
 }
+.table-wrap tfoot td {
+  padding: var(--space-2) var(--space-4);
+  border-top: 2px solid var(--color-border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface-elevated);
+}
 .text-right {
   text-align: right;
+}
+.text-center {
+  text-align: center;
 }
 table .num,
 .num {
