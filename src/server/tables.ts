@@ -95,3 +95,13 @@ export const ACTION_LOGS_SHAPE: TableShape = {
   jsonFields: ['metadata'],
   boolFields: []
 };
+
+// ── LGPD (consent + rate limit) ─────────────────────────────────────────
+
+export const CONSENT_TABLE = 'consents';
+export const CONSENT_SHAPE: TableShape = {};
+
+export const RATE_LIMIT_TABLE = 'rate_limits';
+export const RATE_LIMIT_SHAPE: TableShape = {
+  jsonFields: ['metadata']
+};

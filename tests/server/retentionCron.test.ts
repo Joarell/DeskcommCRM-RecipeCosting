@@ -18,7 +18,7 @@ function insertMessage(db: FakeD1, id: string, text: string, ageDays: number) {
 const ANONYMIZED = '[Anonimizado por política de retenção]';
 
 describe('runRetention', () => {
-  it('applies the policies to the database in the env', async () => {
+  it('@spec:AC-015 applies the policies to the database in the env', async () => {
     const db = new FakeD1();
     await insertMessage(db, 'm-old', 'antigo', 500);
     await runRetention(db, {});

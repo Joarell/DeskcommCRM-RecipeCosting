@@ -80,7 +80,7 @@ describe('readRetentionDays', () => {
     expect(readRetentionDays({})).toEqual(DEFAULTS);
   });
 
-  it('reads windows from the Worker env', () => {
+  it('@spec:AC-014 reads windows from the Worker env', () => {
     const env = {
       RETENTION_MESSAGES_DAYS: '30',
       RETENTION_WEBHOOK_EVENTS_DAYS: '7'
@@ -110,7 +110,7 @@ describe('applyRetentionPolicies', () => {
     await seed(db);
   });
 
-  it('anonymizes old messages but keeps recent ones', async () => {
+  it('@spec:AC-009 anonymizes old messages but keeps recent ones', async () => {
     const report = await applyRetentionPolicies(db, DEFAULTS);
     expect(report.errors).toEqual([]);
     // m-old (500d, past the 365d window) plus c-old (900d, past 730d).
@@ -128,12 +128,12 @@ describe('applyRetentionPolicies', () => {
     );
   });
 
-  it('anonymizes the phone of old conversations only', async () => {
+  it('@spec:AC-010 anonymizes the phone of old conversations only', async () => {
     await applyRetentionPolicies(db, DEFAULTS);
     expect(cell(db, 'conversations', 'c-old', 'channelPhone')).toBe('[Anonimizado]');
   });
 
-  it('deletes expired webhook events, audit logs and action logs', async () => {
+  it('@spec:AC-011 deletes expired webhook events, audit logs and action logs', async () => {
     const report = await applyRetentionPolicies(db, DEFAULTS);
     // three log tables plus the one withdrawn consent.
     expect(report.deleted).toBe(4);
@@ -142,7 +142,13 @@ describe('applyRetentionPolicies', () => {
     expect(present(db, 'action_logs', 'l-old')).toBe(false);
   });
 
-  it('deletes a withdrawn consent but never a granted one', async () => {
+  it('@spec:AC-012 deletes old auth_audit and action_logs', async () => {
+    await applyRetentionPolicies(db, DEFAULTS);
+    expect(present(db, 'auth_audit', 'a-old')).toBe(false);
+    expect(present(db, 'action_logs', 'l-old')).toBe(false);
+  });
+
+  it('@spec:AC-013 deletes a withdrawn consent but never a granted one', async () => {
     await applyRetentionPolicies(db, DEFAULTS);
     expect(present(db, 'consents', 'k-old-withdrawn')).toBe(false);
     expect(present(db, 'consents', 'k-old-granted')).toBe(true);

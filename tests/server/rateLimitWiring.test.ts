@@ -29,7 +29,7 @@ describe('checkRateLimit', () => {
     db = FakeD1.empty();
   });
 
-  it('allows the first MAX_LOGIN_ATTEMPTS attempts, then blocks', async () => {
+  it('@spec:AC-005 allows the first MAX_LOGIN_ATTEMPTS attempts, then blocks', async () => {
     const key = getClientKey(loginRequest(), 'login');
     for (let i = 0; i < MAX_LOGIN_ATTEMPTS; i += 1) {
       const result = await checkRateLimit(db, key, MAX_LOGIN_ATTEMPTS);
@@ -72,7 +72,7 @@ describe('checkRateLimit', () => {
     expect((await checkRateLimit(db, second, MAX_LOGIN_ATTEMPTS)).allowed).toBe(true);
   });
 
-  it('stays blocked inside the window and recovers after it expires', async () => {
+  it('@spec:AC-007 stays blocked inside the window and recovers after it expires', async () => {
     // The regression: an elapsed window was still counted, because the
     // cleanup deleted at `now - windowMs` and nothing re-checked `resetAt`.
     // A blocked client therefore stayed locked out for roughly twice the
@@ -86,6 +86,16 @@ describe('checkRateLimit', () => {
 
     await new Promise((resolve) => setTimeout(resolve, window + 50));
     expect((await checkRateLimit(db, key, 3, window)).allowed).toBe(true);
+  });
+
+  it('@spec:AC-006 blocks with 429 and retryAfter after exceeding the limit', async () => {
+    const key = getClientKey(loginRequest(), 'login');
+    for (let i = 0; i < MAX_LOGIN_ATTEMPTS; i += 1) {
+      await checkRateLimit(db, key, MAX_LOGIN_ATTEMPTS);
+    }
+    const result = await checkRateLimit(db, key, MAX_LOGIN_ATTEMPTS);
+    expect(result.allowed).toBe(false);
+    expect(result.retryAfter).toBeGreaterThan(0);
   });
 
   it('still blocks on the default window, which is long', async () => {
@@ -110,7 +120,7 @@ describe('checkRateLimit', () => {
 });
 
 describe('getClientKey', () => {
-  it('keys on the connecting IP and the action suffix', () => {
+  it('@spec:AC-008 keys on the connecting IP and the action suffix', () => {
     expect(getClientKey(loginRequest(), 'login')).toBe(`${IP}:login`);
   });
 

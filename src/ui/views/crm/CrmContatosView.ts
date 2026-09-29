@@ -355,6 +355,7 @@ async function recordCreate(
   const saved = await ctx.contacts.add({
     id: uid(),
     ...data,
+    assignedUserId: userId,
     createdAt: new Date().toISOString()
   });
   await ctx.crm.recordActivity({

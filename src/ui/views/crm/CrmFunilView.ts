@@ -312,7 +312,8 @@ async function handleSubmit(
     valueCents: Math.round(Number(values.value) * 100),
     status: existing?.status ?? 'open' as Deal['status'],
     lostReason: existing?.lostReason ?? '',
-    nextActionAt
+    nextActionAt,
+    assignedUserId: existing?.assignedUserId ?? ''
   };
   if (existing) {
     await ctx.crm.updateDeal(existing.id, data);

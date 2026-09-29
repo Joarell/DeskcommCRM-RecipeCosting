@@ -2,10 +2,10 @@
 
 > feature: lgpd-privacidade
 
-## T-001 — Fundação: tipos e exports faltantes [pendente]
+## T-001 — Fundação: tipos e exports faltantes [concluida]
 
 - Refs: US-001, US-002, AC-001, AC-005
-- Arquivos: src/domain/crm.ts, src/server/tables.ts
+- Arquivos: src/domain/crm.ts, src/server/tables.ts, src/server/consent.ts, src/server/rateLimit.ts, src/server/retention.ts, src/server/retentionCron.ts, src/middleware.ts, src/worker.ts, src/domain/pseudonymize.ts, src/domain/dataFreshness.ts, src/ui/freshness.ts
 - Notas: O código LGPD referencia `ConsentRecord`, `CONSENT_TABLE`, `CONSENT_SHAPE`, `RATE_LIMIT_TABLE`, `RATE_LIMIT_SHAPE` e `assignedUserId` em Contact/Deal — nenhum existe ainda. Esta tarefa é pré-requisito de todas as outras.
 
 ## T-002 — Testes de consentimento (AC-001 a AC-004) [pendente]
@@ -40,6 +40,6 @@
 
 ## T-007 — Testes de princípios LGPD (P-004, P-005, P-006) [pendente]
 
-- Refs: P-004, P-005, P-006
+- Refs: US-001, US-003, US-005, AC-001, AC-014, AC-021
 - Arquivos: tests/domain/lgpdPrinciples.test.ts
 - Notas: Testa que consentimento é granular (P-004), que retenção tem prazo configurável (P-005) e que direitos do titular funcionam (P-006). Cada teste anota `@principle:P-xxx`.

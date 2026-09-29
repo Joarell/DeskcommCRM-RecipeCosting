@@ -27,6 +27,7 @@ export interface Contact {
   email: string;
   notes: string;
   tags: string[];
+  assignedUserId: string;
   createdAt: string;
 }
 
@@ -55,6 +56,7 @@ export interface Deal {
   status: DealStatus;
   lostReason: string;
   nextActionAt: string;
+  assignedUserId: string;
   createdAt: string;
 }
 
@@ -218,3 +220,30 @@ export const ACTIVITY = {
   DEAL_WON: 'deal.won',
   DEAL_LOST: 'deal.lost'
 } as const;
+
+// LGPD consent record — one row per grant, with full audit trail.
+export type ConsentStatus = 'granted' | 'withdrawn' | 'expired';
+
+export type LawfulBasis =
+  | 'consent'
+  | 'contract'
+  | 'legal_obligation'
+  | 'legitimate_interest'
+  | 'vital_interest'
+  | 'public_task';
+
+export interface ConsentRecord {
+  id: string;
+  subjectId: string;
+  subjectType: 'user' | 'contact';
+  purposes: string[];
+  lawfulBasis: LawfulBasis;
+  status: ConsentStatus;
+  grantedAt: string;
+  withdrawnAt?: string;
+  expiresAt?: string;
+  ip?: string;
+  userAgent?: string;
+  version: string;
+  metadata: Record<string, unknown>;
+}

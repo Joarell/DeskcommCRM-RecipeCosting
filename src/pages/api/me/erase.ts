@@ -50,8 +50,15 @@ async function anonymizeMessages(
   db: Database,
   userContacts: Contact[]
 ): Promise<void> {
+  const conversations = await listEntities<Conversation>(
+    db, CONVERSATIONS_TABLE, {}
+  );
+  const userConversationIds = new Set(
+    conversations
+      .filter(c => userContacts.some(uc => uc.id === c.contactId))
+      .map(c => c.id)
+  );
   const messages = await listEntities<Message>(db, MESSAGES_TABLE, {});
-  const userConversationIds = new Set(userContacts.map(c => c.id));
   for (const msg of messages) {
     if (userConversationIds.has(msg.conversationId)) {
       await updateEntity(db, MESSAGES_TABLE, {}, msg.id, {
