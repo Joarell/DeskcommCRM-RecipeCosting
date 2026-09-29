@@ -18,7 +18,12 @@ export async function ensureWahaContact(
   const key = normalizePhoneDigits(phone);
   const existing = await findContactByPhone(db, phone, key);
   const contact = existing[0] ?? newWahaContact(phone, name, at);
-  if (!existing[0]) await insertById(db, 'contacts', contact);
+  if (!existing[0]) {
+    await insertById(db, 'contacts', contact);
+  } else if (name && contact.name === phone) {
+    await updateById<Contact>(db, 'contacts', contact.id, { name });
+    contact.name = name;
+  }
   contact.tags = JSON.parse((contact.tags as unknown as string) || '[]');
   return contact;
 }

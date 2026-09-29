@@ -91,6 +91,39 @@ describe('ApiRepository', () => {
     expect(repo.getById('nope')).toBeUndefined();
   });
 
+  it('sends the bearer token on load when a token callback is provided', async () => {
+    let captured: RequestInit | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      captured = init;
+      return Promise.resolve(jsonResponse(items, 200));
+    }));
+    const repo = new ApiRepository<Item>('/api/items', () => 'tok123');
+    await repo.load();
+    expect((captured?.headers as Headers).get('Authorization')).toBe('Bearer tok123');
+  });
+
+  it('sends the bearer token on add when a token callback is provided', async () => {
+    let captured: RequestInit | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      captured = init;
+      return Promise.resolve(jsonResponse({ id: 'i2', name: 'Açúcar' }, 201));
+    }));
+    const repo = new ApiRepository<Item>('/api/items', () => 'tok123');
+    await repo.add({ id: 'i2', name: 'Açúcar' });
+    expect((captured?.headers as Headers).get('Authorization')).toBe('Bearer tok123');
+  });
+
+  it('sends the bearer token on remove when a token callback is provided', async () => {
+    let captured: RequestInit | undefined;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      captured = init;
+      return Promise.resolve(jsonResponse(null, 200));
+    }));
+    const repo = new ApiRepository<Item>('/api/items', () => 'tok123');
+    await repo.remove('i1');
+    expect((captured?.headers as Headers).get('Authorization')).toBe('Bearer tok123');
+  });
+
   it('subscribe notifies listeners on each mutation', async () => {
     stubFetch((_url, init) =>
       init?.method === 'POST' ? jsonResponse({ id: 'i2', name: 'Açúcar' }, 201) : jsonResponse([], 200)

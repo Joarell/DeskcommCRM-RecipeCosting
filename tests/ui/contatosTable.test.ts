@@ -15,7 +15,6 @@ const ADMIN: User = {
   name: 'Admin',
   email: 'admin@deskcomm.local',
   passwordHash: '',
-  passwordSalt: '',
   role: 'admin',
   createdAt: '2026-01-01T00:00:00Z'
 };
@@ -77,7 +76,7 @@ describe('CrmContatosView lists every saved contact', () => {
     document.body.innerHTML = '';
   });
 
-  it('shows a row for every contact in the repository', () => {
+  it('shows a row for every contact in the repository @spec:AC-028', () => {
     // More than a screenful, so a silent cap would show up as a short count.
     const saved = Array.from({ length: 30 }, (_, i) => contact(i + 1));
     const root = mount(makeCtx(saved));
@@ -85,7 +84,7 @@ describe('CrmContatosView lists every saved contact', () => {
     expect(root.querySelectorAll('tbody tr')).toHaveLength(30);
   });
 
-  it('renders each saved contact by name, phone and e-mail', () => {
+  it('renders each saved contact by name, phone and e-mail @spec:AC-029', () => {
     const root = mount(makeCtx([contact(1), contact(2)]));
     const text = root.textContent ?? '';
 
@@ -96,7 +95,7 @@ describe('CrmContatosView lists every saved contact', () => {
     expect(text).toContain('c2@example.com');
   });
 
-  it('sorts the whole set by name', () => {
+  it('sorts the whole set by name @spec:AC-030', () => {
     const saved = [
       contact(1, { name: 'Zilda' }),
       contact(2, { name: 'Ana' }),
@@ -110,7 +109,7 @@ describe('CrmContatosView lists every saved contact', () => {
     expect(firstCells).toEqual(['Ana', 'Marta', 'Zilda']);
   });
 
-  it('shows the empty state when nothing is saved', () => {
+  it('shows the empty state when nothing is saved @spec:AC-031', () => {
     const root = mount(makeCtx([]));
 
     expect(root.querySelector('tbody tr')).toBeFalsy();
@@ -140,7 +139,7 @@ describe('CrmContatosView saves a new contact into the list', () => {
     document.body.innerHTML = '';
   });
 
-  it('persists the submitted fields and shows the new row', async () => {
+  it('persists the submitted fields and shows the new row @spec:AC-032', async () => {
     const ctx = makeCtx([contact(1)]);
     const root = mount(ctx);
 
@@ -200,7 +199,7 @@ describe('CrmContatosView saves a new contact into the list', () => {
     expect(root.textContent).toContain('Novo 3');
   });
 
-  it('closes the modal so the new contact is visible', async () => {
+  it('closes the modal so the new contact is visible @spec:AC-033', async () => {
     const root = mount(makeCtx([]));
 
     qs<HTMLButtonElement>('#new-contact', root)?.click();

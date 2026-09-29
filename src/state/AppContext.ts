@@ -73,13 +73,14 @@ export class AppContext {
     movements: IRepository<StockMovement>;
     settings: ApiSettingsRepository;
   } {
+    const token = () => this.auth.token();
     return {
-      ingredients: new ApiRepository<Ingredient>('/api/ingredients'),
-      components: new ApiRepository<RecipeComponent>('/api/components'),
-      products: new ApiRepository<Product>('/api/products'),
-      customers: new ApiRepository<Customer>('/api/customers'),
-      orders: new ApiRepository<Order>('/api/orders'),
-      movements: new ApiRepository<StockMovement>('/api/stock-movements'),
+      ingredients: new ApiRepository<Ingredient>('/api/ingredients', token),
+      components: new ApiRepository<RecipeComponent>('/api/components', token),
+      products: new ApiRepository<Product>('/api/products', token),
+      customers: new ApiRepository<Customer>('/api/customers', token),
+      orders: new ApiRepository<Order>('/api/orders', token),
+      movements: new ApiRepository<StockMovement>('/api/stock-movements', token),
       settings: new ApiSettingsRepository('/api/settings')
     };
   }
@@ -103,26 +104,27 @@ export class AppContext {
     auth: ApiAuthRepository;
     waha: WahaApiRepository;
   } {
+    const token = () => this.auth.token();
     return {
-      users: new ApiRepository<User>('/api/users'),
-      contacts: new ApiRepository<Contact>('/api/crm/contacts'),
-      pipelines: new ApiRepository<Pipeline>('/api/crm/pipelines'),
-      stages: new ApiRepository<Stage>('/api/crm/stages'),
-      deals: new ApiRepository<Deal>('/api/crm/deals'),
-      tasks: new ApiRepository<Task>('/api/crm/tasks'),
-      quickReplies: new ApiRepository<QuickReply>('/api/crm/quick-replies'),
-      events: new ApiRepository<CalendarEvent>('/api/crm/calendar-events'),
-      conversations: new ApiRepository<Conversation>('/api/crm/conversations'),
-      messages: new ApiRepository<Message>('/api/crm/messages'),
-      catalog: new ApiRepository<CatalogProduct>('/api/crm/catalog-products'),
-      activities: new ApiRepository<CrmActivity>('/api/crm/activities'),
-      notes: new ApiRepository<ConversationNote>('/api/crm/conversation-notes'),
-      tags: new ApiRepository<Tag>('/api/crm/tags'),
+      users: new ApiRepository<User>('/api/users', token),
+      contacts: new ApiRepository<Contact>('/api/crm/contacts', token),
+      pipelines: new ApiRepository<Pipeline>('/api/crm/pipelines', token),
+      stages: new ApiRepository<Stage>('/api/crm/stages', token),
+      deals: new ApiRepository<Deal>('/api/crm/deals', token),
+      tasks: new ApiRepository<Task>('/api/crm/tasks', token),
+      quickReplies: new ApiRepository<QuickReply>('/api/crm/quick-replies', token),
+      events: new ApiRepository<CalendarEvent>('/api/crm/calendar-events', token),
+      conversations: new ApiRepository<Conversation>('/api/crm/conversations', token),
+      messages: new ApiRepository<Message>('/api/crm/messages', token),
+      catalog: new ApiRepository<CatalogProduct>('/api/crm/catalog-products', token),
+      activities: new ApiRepository<CrmActivity>('/api/crm/activities', token),
+      notes: new ApiRepository<ConversationNote>('/api/crm/conversation-notes', token),
+      tags: new ApiRepository<Tag>('/api/crm/tags', token),
       appointmentTypes: new ApiRepository<AppointmentType>(
-        '/api/crm/appointment-types'
+        '/api/crm/appointment-types', token
       ),
       auth: new ApiAuthRepository(),
-      waha: new WahaApiRepository('/api/whatsapp', () => this.auth.token())
+      waha: new WahaApiRepository('/api/whatsapp', token)
     };
   }
 

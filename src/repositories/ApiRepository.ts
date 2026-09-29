@@ -9,7 +9,10 @@ export class ApiRepository<T extends { id: string }> implements IRepository<T> {
   private items: T[] = [];
   private listeners: Array<() => void> = [];
 
-  constructor(private readonly endpoint: string) {}
+  constructor(
+    private readonly endpoint: string,
+    private readonly token: () => string | null = () => null
+  ) {}
 
   getAll(): T[] {
     return [...this.items];
@@ -20,7 +23,9 @@ export class ApiRepository<T extends { id: string }> implements IRepository<T> {
   }
 
   async load(): Promise<void> {
-    const response = await fetch(this.endpoint);
+    const response = await fetch(this.endpoint, {
+      headers: this.authHeaders()
+    });
     this.items = response.ok ? await response.json() : [];
     this.notify();
   }
@@ -43,7 +48,10 @@ export class ApiRepository<T extends { id: string }> implements IRepository<T> {
   }
 
   async remove(id: string): Promise<void> {
-    await fetch(`${this.endpoint}/${id}`, { method: 'DELETE' });
+    await fetch(`${this.endpoint}/${id}`, {
+      method: 'DELETE',
+      headers: this.authHeaders()
+    });
     this.items = this.items.filter((item) => item.id !== id);
     this.notify();
   }
@@ -80,11 +88,20 @@ export class ApiRepository<T extends { id: string }> implements IRepository<T> {
   private jsonRequest(
     url: string, method: string, body: unknown
   ): Promise<Response> {
+    const headers = this.authHeaders();
+    headers.set('Content-Type', 'application/json');
     return fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body)
     });
+  }
+
+  private authHeaders(): Headers {
+    const headers = new Headers();
+    const token = this.token();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return headers;
   }
 
   private notify(): void {

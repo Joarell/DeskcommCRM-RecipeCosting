@@ -12,7 +12,7 @@ import { renderCrudTable, type TableColumn } from '../../CrudTable';
 import { openModal, closeModal } from '../../Modal';
 import { showToast } from '../../Toast';
 import { autoRerender } from '../../reactive';
-import { qs, formValues } from '../../dom';
+import { qs, qsIf, formValues } from '../../dom';
 import { section, textField, modalFoot } from './crmUi';
 
 let showDuplicates = false;
@@ -191,7 +191,7 @@ function dupChip(contact: Contact): string {
 
 function wireEvents(root: HTMLElement, ctx: AppContext): void {
   qs('#new-contact', root).addEventListener('click', () => openForm(ctx));
-  qs('#toggle-dupes', root)?.addEventListener('click', () => {
+  qsIf('#toggle-dupes', root)?.addEventListener('click', () => {
     showDuplicates = !showDuplicates;
     draw(root, ctx);
   });
