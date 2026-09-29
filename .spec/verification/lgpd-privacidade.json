@@ -1,0 +1,11 @@
+{
+  "feature": "lgpd-privacidade",
+  "timestamp": "2026-09-29T03:17:15.780Z",
+  "gitRev": "c6f26499",
+  "command": "npx vitest run --reporter=tap",
+  "reporter": "tap",
+  "exitCode": 1,
+  "testsParsed": 1235,
+  "results": {},
+  "principles": {}
+}
